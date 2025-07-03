@@ -1,4 +1,3 @@
-// shader.js
 (async function() {
   const canvas = document.getElementById('glcanvas');
   const gl = canvas.getContext('webgl');
@@ -6,29 +5,35 @@
     alert('WebGL не поддерживается');
     return;
   }
-  // Подгоняем размер канваса под окно
+
+  // Подгонка канваса под экран + DPR
   function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
     gl.viewport(0, 0, canvas.width, canvas.height);
   }
   window.addEventListener('resize', resize);
   resize();
 
-  // Утилита для загрузки и компиляции шейдера
+  // Компиляция шейдера
   function compileShader(src, type) {
-    const shader = gl.createShader(type);
-    gl.shaderSource(shader, src);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      console.error(gl.getShaderInfoLog(shader));
-      gl.deleteShader(shader);
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(s));
+      gl.deleteShader(s);
       return null;
     }
-    return shader;
+    return s;
   }
 
-  // Загружаем GLSL код (пример — через fetch, но можно встраивать строкой)
+  // Загрузка GLSL (можно inline-строками или через fetch)
   const [vertSrc, fragSrc] = await Promise.all([
     fetch('vertex.glsl').then(r => r.text()),
     fetch('fragment.glsl').then(r => r.text())
@@ -37,7 +42,6 @@
   const vertShader = compileShader(vertSrc, gl.VERTEX_SHADER);
   const fragShader = compileShader(fragSrc, gl.FRAGMENT_SHADER);
 
-  // Создаём и линкуем программу
   const program = gl.createProgram();
   gl.attachShader(program, vertShader);
   gl.attachShader(program, fragShader);
@@ -48,7 +52,7 @@
   }
   gl.useProgram(program);
 
-  // Привязываем атрибуты: создаём квадрат (две треугольные полосы)
+  // Квадрат на весь экран
   const quad = new Float32Array([
     -1, -1,   1, -1,  -1, 1,
      1, -1,   1,  1,  -1, 1
@@ -61,18 +65,32 @@
   gl.enableVertexAttribArray(posLoc);
   gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
-  // Получаем локации униформ
+  // Uniform‑ы
   const iResolutionLoc = gl.getUniformLocation(program, 'iResolution');
-  const iMouseLoc = gl.getUniformLocation(program, 'iMouse');
+  const iMouseLoc      = gl.getUniformLocation(program, 'iMouse');
 
-  // Отслеживаем положение мыши
+  // Координаты мыши/пальца (в пикселях WebGL‑канваса)
   const mouse = [0, 0];
+  
+  // Мышь
   canvas.addEventListener('mousemove', e => {
-    mouse[0] = e.clientX;
-    mouse[1] = canvas.height - e.clientY;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    mouse[0] = (e.clientX - rect.left) * dpr;
+    mouse[1] = canvas.height - (e.clientY - rect.top) * dpr;
   });
 
-  // Основной цикл рендера
+  // Touch
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const touch = e.touches[0];
+    mouse[0] = (touch.clientX - rect.left) * dpr;
+    mouse[1] = canvas.height - (touch.clientY - rect.top) * dpr;
+  }, { passive: false });
+
+  // Рендер‑цикл
   function render() {
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform2f(iResolutionLoc, canvas.width, canvas.height);
